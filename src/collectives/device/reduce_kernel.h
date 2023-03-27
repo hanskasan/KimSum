@@ -122,7 +122,29 @@ struct Apply_Reduce<FuncNull<T>, /*EltPerPack=*/1> {
 template<typename T>
 struct Apply_Reduce<FuncSum<T>, /*EltPerPack=*/1> {
   __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
-    return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
+    // return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
+    // return toPack<T>(fromPack<T>(a) + fromPack<T>(b) + 1);
+
+    // Select epsilon values
+    // float epsilon = 0.0; // 0% pruning
+    // float epsilon = 0.000004154508133069612; // 5% pruning
+    // float epsilon = 0.000058440665270609315; // 25% pruning
+    // float epsilon = 0.00015128182712942362; // 50% pruning
+    // float epsilon = 0.00033174644340761006; // 75% pruning
+    // float epsilon = 0.0006370846123900267; // 90% pruning
+    // float epsilon = 0.0009325066726887598; // 95% pruning
+    // float epsilon = 0.0018309114151634272; // 99% pruning
+    float epsilon = 0.0036860777214169915; // 99.9% pruning
+
+    if ((fabsf(fromPack<T>(a)) < epsilon) && (fabsf(fromPack<T>(b)) < epsilon)){
+      return toPack<T>(0);
+    } else if (fabsf(fromPack<T>(a)) < epsilon){
+      return b;
+    } else if (fabsf(fromPack<T>(b)) < epsilon){
+      return a;
+    } else {
+      return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
+    }
   }
 };
 template<typename T>
