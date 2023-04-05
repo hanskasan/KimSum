@@ -63,7 +63,7 @@ namespace {
       nelem = min(realChunkSize, size-offset);
       prims.send(offset, nelem);
 
-      // k-2 steps: reduce and copy to next GPU
+      // k-3 steps: reduce and copy to next GPU
       for (int j=2; j<nranks-1; ++j) {
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
