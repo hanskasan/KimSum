@@ -1411,21 +1411,21 @@ static ncclResult_t hostToDevRedOp(
       break;
     case ncclFloat16:
       opFull->op = ncclDevPreMulSum;
-      f16 = __float2half(float(1.0/comm->nRanks)); // __double2half not supported pre CUDA 11.x
+      f16 = __float2half(float(1.0/(comm->nRanks-1))); // __double2half not supported pre CUDA 11.x
       break;
     #if defined(__CUDA_BF16_TYPES_EXIST__)
     case ncclBfloat16:
       opFull->op = ncclDevPreMulSum;
-      bf16 = __float2bfloat16(float(1.0/comm->nRanks));
+      bf16 = __float2bfloat16(float(1.0/(comm->nRanks-1)));
       break;
     #endif
     case ncclFloat32:
       opFull->op = ncclDevPreMulSum;
-      f32 = float(1.0/comm->nRanks);
+      f32 = float(1.0/(comm->nRanks-1));
       break;
     case ncclFloat64:
       opFull->op = ncclDevPreMulSum;
-      f64 = 1.0/comm->nRanks;
+      f64 = 1.0/(comm->nRanks-1);
       break;
     }
     opFull->scalarArgIsPtr = false;
