@@ -1407,7 +1407,7 @@ static ncclResult_t hostToDevRedOp(
     case ncclInt8:  case ncclInt32:  case ncclInt64:
     case ncclUint8: case ncclUint32: case ncclUint64:
       opFull->op = ncclDevSumPostDiv;
-      u64 = comm->nRanks;
+      u64 = (comm->nRanks-1);
       break;
     case ncclFloat16:
       opFull->op = ncclDevPreMulSum;
