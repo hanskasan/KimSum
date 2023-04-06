@@ -63,8 +63,8 @@ namespace {
       nelem = min(realChunkSize, size-offset);
       prims.send(offset, nelem);
 
-      // k-3 steps: reduce and copy to next GPU
-      for (int j=2; j<nranks-1; ++j) {
+      // k-2 steps: reduce and copy to next GPU
+      for (int j=2; j<nranks-1; ++j) { //IMPL: nranks-X
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
@@ -73,21 +73,21 @@ namespace {
 
       // step k-1: reduce this buffer and data, which will produce the final
       // result that we store in this data and push to the next GPU
-      chunk = ringIx + 0;
+      chunk = modRanks(ringIx + 1); ; //IMPL: modRanks(ringIx+X)
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
       prims.directRecvReduceCopySend(offset, offset, offset, nelem, /*postOp=*/true);
 
       // k-2 steps: copy to next GPU
       for (int j=1; j<nranks-1; ++j) {
-        chunk = modRanks(ringIx + nranks-j);
+        chunk = modRanks(ringIx + nranks-j + 1); //IMPL: +X
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
         prims.directRecvCopySend(offset, offset, nelem);
       }
 
       // Make final copy from buffer to dest.
-      chunk = modRanks(ringIx + 1);
+      chunk = modRanks(ringIx + 1 + 1); //IMPL: +X
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
       prims.directRecv(offset, nelem);
