@@ -57,18 +57,24 @@ namespace {
       int nelem;
       int chunk;
 
+      // HANS: Step Counter
+      int step = 0;
+
       // step 0: push data to next GPU
       chunk = modRanks(ringIx + nranks-1);
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
-      prims.send(offset, nelem);
+      prims.send(offset, nelem, step);
+      step += 1;
 
       // k-2 steps: reduce and copy to next GPU
       for (int j=2; j<nranks; ++j) {
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
-        prims.recvReduceSend(offset, nelem);
+        // printf("recvReduceSend at ringIx: %d, step: %d\n", ringIx, j);
+        prims.recvReduceSend(offset, nelem, step);
+        step += 1;
       }
 
       // step k-1: reduce this buffer and data, which will produce the final
@@ -76,7 +82,9 @@ namespace {
       chunk = ringIx + 0;
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
-      prims.directRecvReduceCopySend(offset, offset, offset, nelem, /*postOp=*/true);
+      // printf("RecvReduceCopySend at ringIx: %d\n", ringIx);
+      prims.directRecvReduceCopySend(offset, offset, offset, nelem, step, /*postOp=*/true);
+      step += 1;
 
       // k-2 steps: copy to next GPU
       for (int j=1; j<nranks-1; ++j) {
@@ -84,6 +92,7 @@ namespace {
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
         prims.directRecvCopySend(offset, offset, nelem);
+        step += 1;
       }
 
       // Make final copy from buffer to dest.
@@ -91,6 +100,7 @@ namespace {
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
       prims.directRecv(offset, nelem);
+      step += 1;
     }
   }
 
@@ -127,14 +137,14 @@ namespace {
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + bid*int(chunkSize);
           int nelem = min(chunkSize, size-offset);
-          prims.send(offset, nelem);
+          prims.send(offset, nelem, 106);
         }
       }
       else {
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + bid*int(chunkSize);
           int nelem = min(chunkSize, size-offset);
-          prims.recvReduceSend(offset, nelem);
+          prims.recvReduceSend(offset, nelem, 101); // HANS: FIXME
         }
       }
     }
@@ -221,14 +231,14 @@ namespace {
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + bid*int(chunkSize);
           int nelem = min(chunkSize, size-offset);
-          prims.send(offset, nelem);
+          prims.send(offset, nelem, 107);
         }
       }
       else {
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + bid*int(chunkSize);
           int nelem = min(chunkSize, size-offset);
-          prims.recvReduceSend(offset, nelem);
+          prims.recvReduceSend(offset, nelem, 102); // HANS: FIXME
         }
       }
     }
@@ -323,7 +333,7 @@ struct RunWorkElement<ncclFuncAllReduce, T, RedOp, NCCL_ALGO_COLLNET_DIRECT, NCC
           if (args->regUsed) {
             prims.directRecvReduceSend(offset, offset, nelem);
           } else {
-            prims.recvReduceSend(offset, nelem);
+            prims.recvReduceSend(offset, nelem, 103);
           }
         }
       } else {
@@ -333,7 +343,7 @@ struct RunWorkElement<ncclFuncAllReduce, T, RedOp, NCCL_ALGO_COLLNET_DIRECT, NCC
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + (bid*direct->nHeads+direct->headRank)*chunkSize;
           int nelem = min(chunkSize, size-offset);
-          prims.send(offset, nelem);
+          prims.send(offset, nelem, 104);
         }
       }
     } else if (tid < tidStartBcast && hasUp) {
@@ -469,13 +479,13 @@ struct RunWorkElement<ncclFuncAllReduce, T, RedOp, NCCL_ALGO_COLLNET_CHAIN, NCCL
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + bid*int(chunkSize);
           int nelem = min(chunkSize, size-offset);
-          prims.send(offset, nelem);
+          prims.send(offset, nelem, 105);
         }
       } else {
         for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
           ssize_t offset = gridOffset + bid*int(chunkSize);
           int nelem = min(chunkSize, size-offset);
-          prims.recvReduceSend(offset, nelem);
+          prims.recvReduceSend(offset, nelem, 104);
         }
       }
     }

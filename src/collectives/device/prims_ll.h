@@ -224,7 +224,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
   }
 
   template <int RECV, int SEND, int SrcBuf, int DstBuf>
-  __device__ __forceinline__ void LLGenericOp(intptr_t srcIx, intptr_t dstIx, int nelem, bool postOp) {
+  __device__ __forceinline__ void LLGenericOp(intptr_t srcIx, intptr_t dstIx, int nelem, int step, bool postOp) {
     constexpr int SRC = SrcBuf != -1 ? 1 : 0;
     constexpr int DST = DstBuf != -1 ? 1 : 0;
     T *srcElts = SrcBuf == -1 ? nullptr : userBufs[SrcBuf] + srcIx;
@@ -258,21 +258,23 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
         if (SrcBuf == Input) data = applyPreOp(redOp, data);
       }
       if (RECV) {
-        data = !SRC ? peerData : applyReduce(redOp, peerData, data);
+        data = !SRC ? peerData : applyReduce(redOp, peerData, data, step);
         #pragma unroll MaxRecv
         for (int i=1; i < MaxRecv && i < fan.nrecv(); i++) {
           peerData = readLLFinish(offset, line, i);
-          data = applyReduce(redOp, peerData, data);
+          data = applyReduce(redOp, peerData, data, step);
         }
       }
 
       if (postOp) data = applyPostOp(redOp, data);
 
       // Send : inter-node, then intra-node, then local
+        uint64_t temp_data = data;
       if (SEND) {
+        // printf("Send at step: %d\n", step);
         for (int i=1; i < MaxSend && i < fan.nsend(); i++)
-          storeLL(sendPtr(i)+offset, data, sendFlag(i));
-        storeLL(sendPtr(0)+offset, data, sendFlag(0));
+          storeLL(sendPtr(i)+offset, temp_data, sendFlag(i));
+        storeLL(sendPtr(0)+offset, temp_data, sendFlag(0));
       }
       if (DST) {
         storeData(dstElts, data, eltInLine);
@@ -366,28 +368,28 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
     userBufs[Output] += delta;
   }
 
-  __device__ void send(intptr_t inpIx, int eltN) {
-    return LLGenericOp<0, 1, Input, -1>(inpIx, -1, eltN, false);
+  __device__ void send(intptr_t inpIx, int eltN, int step=-1) {
+    return LLGenericOp<0, 1, Input, -1>(inpIx, -1, eltN, step, false);
   }
   __device__ void sendFromOutput(intptr_t outIx, int eltN) {
-    return LLGenericOp<0, 1, Output, -1>(outIx, -1, eltN, false);
+    return LLGenericOp<0, 1, Output, -1>(outIx, -1, eltN, 402, false);
   }
   __device__ void recv(intptr_t outIx, int eltN, bool postOp=false) {
-    return LLGenericOp<1, 0, -1, Output>(-1, outIx, eltN, postOp);
+    return LLGenericOp<1, 0, -1, Output>(-1, outIx, eltN, 403, postOp);
   }
-  __device__ void recvReduceSend(intptr_t inpIx, int eltN) {
-    return LLGenericOp<1, 1, Input, -1>(inpIx, -1, eltN, false);
+  __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1) {
+    return LLGenericOp<1, 1, Input, -1>(inpIx, -1, eltN, step, false);
   }
   __device__ void recvReduceCopy(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
-    return LLGenericOp<1, 0, Input, Output>(inpIx, outIx, eltN, postOp);
+    return LLGenericOp<1, 0, Input, Output>(inpIx, outIx, eltN, 404, postOp);
   }
   __device__ void copySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
-    return LLGenericOp<0, 1, Input, Output>(inpIx, outIx, eltN, postOp);
+    return LLGenericOp<0, 1, Input, Output>(inpIx, outIx, eltN, 405, postOp);
   }
   __device__ void recvCopySend(intptr_t outIx, int eltN, bool postOp=false) {
-    return LLGenericOp<1, 1, -1, Output>(-1, outIx, eltN, postOp);
+    return LLGenericOp<1, 1, -1, Output>(-1, outIx, eltN, 406, postOp);
   }
-  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
-    return LLGenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, postOp);
+  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool postOp=false) {
+    return LLGenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, step, postOp);
   }
 };

@@ -12,6 +12,9 @@
 #include <limits>
 #include <type_traits>
 
+// HANS: Additionals
+#include <curand_kernel.h>
+
 ////////////////////////////////////////////////////////////////////////////////
 // The reduction function classes. All classes must:
 //  1. Expose the `EltType` typedef.
@@ -67,10 +70,10 @@ struct Apply_LoadMultimem/*{
 // transformed appropriately.
 
 template<typename Fn, typename Pack>
-__device__ __forceinline__ Pack applyReduce(Fn fn, Pack a, Pack b) {
+__device__ __forceinline__ Pack applyReduce(Fn fn, Pack a, Pack b, int step=-1) {
   return fromPack<Pack>(
     Apply_Reduce<Fn, sizeof(Pack)/sizeof(typename Fn::EltType)>
-      ::reduce(fn, toPack(a), toPack(b))
+      ::reduce(fn, toPack(a), toPack(b), step)
   );
 }
 
@@ -105,9 +108,9 @@ __device__ __forceinline__ BytePack<Apply_LoadMultimem<Fn>::PackSize> applyLoadM
 template<typename Fn, int EltPerPack>
 struct Apply_Reduce {
   template<int Size>
-  __device__ static BytePack<Size> reduce(Fn fn, BytePack<Size> a, BytePack<Size> b) {
-    a.half[0] = Apply_Reduce<Fn, EltPerPack/2>::reduce(fn, a.half[0], b.half[0]);
-    a.half[1] = Apply_Reduce<Fn, EltPerPack/2>::reduce(fn, a.half[1], b.half[1]);
+  __device__ static BytePack<Size> reduce(Fn fn, BytePack<Size> a, BytePack<Size> b, int step) {
+    a.half[0] = Apply_Reduce<Fn, EltPerPack/2>::reduce(fn, a.half[0], b.half[0], step);
+    a.half[1] = Apply_Reduce<Fn, EltPerPack/2>::reduce(fn, a.half[1], b.half[1], step);
     return a;
   }
 };
@@ -115,53 +118,60 @@ struct Apply_Reduce {
 // Base case definitions (EltPerPack == 1)
 template<typename T>
 struct Apply_Reduce<FuncNull<T>, /*EltPerPack=*/1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     return a;
   }
 };
 template<typename T>
 struct Apply_Reduce<FuncSum<T>, /*EltPerPack=*/1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     // return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
     // return toPack<T>(fromPack<T>(a) + fromPack<T>(b) + 1);
 
-    // Select epsilon values
-    // float epsilon = 0.0; // 0% pruning
-    // float epsilon = 0.000004154508133069612; // 5% pruning
-    // float epsilon = 0.000058440665270609315; // 25% pruning
-    // float epsilon = 0.00015128182712942362; // 50% pruning
-    // float epsilon = 0.00033174644340761006; // 75% pruning
-    // float epsilon = 0.0006370846123900267; // 90% pruning
-    // float epsilon = 0.0009325066726887598; // 95% pruning
-    // float epsilon = 0.0018309114151634272; // 99% pruning
-    float epsilon = 0.0036860777214169915; // 99.9% pruning
+    float prob = 0.05;
 
-    if ((fabsf(fromPack<T>(a)) < epsilon) && (fabsf(fromPack<T>(b)) < epsilon)){
-      return toPack<T>(0);
-    } else if (fabsf(fromPack<T>(a)) < epsilon){
-      return b;
-    } else if (fabsf(fromPack<T>(b)) < epsilon){
-      return a;
+    unsigned long long seed1 = threadIdx.x + blockDim.x * blockIdx.x;
+    curandState s1;
+    curand_init(seed1, 0, 0, &s1);
+
+    float random1 = curand_uniform(&s1);
+
+    T a_temp = fromPack<T>(a);
+
+    if (step == 1){
+      unsigned long long seed2 = clock64();
+      curandState s2;
+      curand_init(seed2, 0, 0, &s2);
+
+      float random2 = curand_uniform(&s2);
+
+      if (random2 < prob){
+        a_temp = 0.0; // Drop previous value
+      }
+    }
+
+    if (random1 < prob){
+      return toPack<T>(a_temp); // Drop my value
     } else {
-      return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
+      return toPack<T>(a_temp + fromPack<T>(b));
     }
   }
 };
 template<typename T>
 struct Apply_Reduce<FuncProd<T>, /*EltPerPack=*/1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncProd<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncProd<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     return toPack<T>(fromPack<T>(a) * fromPack<T>(b));
   }
 };
 template<typename T>
 struct Apply_Reduce<FuncMin<T>, /*EltPerPack=*/1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncMin<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncMin<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     return toPack<T>(min(fromPack<T>(a), fromPack<T>(b)));
   }
 };
 template<typename T>
 struct Apply_Reduce<FuncMax<T>, /*EltPerPack=*/1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncMax<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncMax<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     return toPack<T>(max(fromPack<T>(a), fromPack<T>(b)));
   }
 };
@@ -169,7 +179,7 @@ struct Apply_Reduce<FuncMax<T>, /*EltPerPack=*/1> {
 // Optimizations for specfic types and element count combinations:
 template<>
 struct Apply_Reduce<FuncSum<uint8_t>, /*EltPerPack=*/4> {
-  __device__ static BytePack<4> reduce(FuncSum<uint8_t> fn, BytePack<4> a, BytePack<4> b) {
+  __device__ static BytePack<4> reduce(FuncSum<uint8_t> fn, BytePack<4> a, BytePack<4> b, int step) {
     constexpr uint32_t lo = 0x00ff00ff;
     constexpr uint32_t hi = ~lo;
     uint32_t x = a.u32;
@@ -180,15 +190,15 @@ struct Apply_Reduce<FuncSum<uint8_t>, /*EltPerPack=*/4> {
 };
 template<>
 struct Apply_Reduce<FuncSum<int8_t>, /*EltPerPack=*/4> {
-  __device__ static BytePack<4> reduce(FuncSum<int8_t> fn, BytePack<4> a, BytePack<4> b) {
-    return Apply_Reduce<FuncSum<uint8_t>, 4>::reduce(FuncSum<uint8_t>(), a, b);
+  __device__ static BytePack<4> reduce(FuncSum<int8_t> fn, BytePack<4> a, BytePack<4> b, int step) {
+    return Apply_Reduce<FuncSum<uint8_t>, 4>::reduce(FuncSum<uint8_t>(), a, b, step);
   }
 };
 
 #if 300 <= __CUDA_ARCH__ && __CUDA_ARCH__ < 500
   template<>
   struct Apply_Reduce<FuncMin<uint8_t>, /*EltPerPack=*/4> {
-    __device__ static BytePack<4> reduce(FuncMin<uint8_t> fn, BytePack<4> a, BytePack<4> b) {
+    __device__ static BytePack<4> reduce(FuncMin<uint8_t> fn, BytePack<4> a, BytePack<4> b, int step) {
       uint32_t z=0;
       asm("vmin4.u32.u32.u32 %0, %1, %2, %3;" : "=r"(a.u32) : "r"(a.u32), "r"(b.u32), "r"(z));
       return a;
@@ -196,7 +206,7 @@ struct Apply_Reduce<FuncSum<int8_t>, /*EltPerPack=*/4> {
   };
   template<>
   struct Apply_Reduce<FuncMin<int8_t>, /*EltPerPack=*/4> {
-    __device__ static BytePack<4> reduce(FuncMin<int8_t> fn, BytePack<4> a, BytePack<4> b) {
+    __device__ static BytePack<4> reduce(FuncMin<int8_t> fn, BytePack<4> a, BytePack<4> b, int step) {
       int32_t z=0;
       asm("vmin4.s32.s32.s32 %0, %1, %2, %3;" : "=r"(a.u32) : "r"(a.u32), "r"(b.u32), "r"(z));
       return a;
@@ -204,7 +214,7 @@ struct Apply_Reduce<FuncSum<int8_t>, /*EltPerPack=*/4> {
   };
   template<>
   struct Apply_Reduce<FuncMax<uint8_t>, /*EltPerPack=*/4> {
-    __device__ static BytePack<4> reduce(FuncMax<uint8_t> fn, BytePack<4> a, BytePack<4> b) {
+    __device__ static BytePack<4> reduce(FuncMax<uint8_t> fn, BytePack<4> a, BytePack<4> b, int step) {
       uint32_t z=0;
       asm("vmax4.u32.u32.u32 %0, %1, %2, %3;" : "=r"(a.u32) : "r"(a.u32), "r"(b.u32), "r"(z));
       return a;
@@ -212,7 +222,7 @@ struct Apply_Reduce<FuncSum<int8_t>, /*EltPerPack=*/4> {
   };
   template<>
   struct Apply_Reduce<FuncMax<int8_t>, /*EltPerPack=*/4> {
-    __device__ static BytePack<4> reduce(FuncMax<int8_t> fn, BytePack<4> a, BytePack<4> b) {
+    __device__ static BytePack<4> reduce(FuncMax<int8_t> fn, BytePack<4> a, BytePack<4> b, int step) {
       int32_t z=0;
       asm("vmax4.s32.s32.s32 %0, %1, %2, %3;" : "=r"(a.u32) : "r"(a.u32), "r"(b.u32), "r"(z));
       return a;
@@ -224,7 +234,7 @@ struct Apply_Reduce<FuncSum<int8_t>, /*EltPerPack=*/4> {
   template<> \
   struct Apply_Reduce<Fn<T>, EltPerPack> { \
     __device__ __forceinline__ static BytePack<sizeof(Vec)> reduce( \
-        Fn<T> fn, BytePack<sizeof(Vec)> a, BytePack<sizeof(Vec)> b \
+        Fn<T> fn, BytePack<sizeof(Vec)> a, BytePack<sizeof(Vec)> b, int step \
       ) { \
       Vec x = fromPack<Vec>(a); \
       Vec y = fromPack<Vec>(b); \
@@ -400,9 +410,9 @@ struct FuncPreMulSum<half> {
 
 template<typename T>
 struct Apply_Reduce<FuncPreMulSum<T>, /*EltPerPack=*/1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncPreMulSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncPreMulSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     // FuncPreMulSum reduce dispatches to FuncSum.
-    return Apply_Reduce<FuncSum<T>, 1>::reduce(FuncSum<T>(), a, b);
+    return Apply_Reduce<FuncSum<T>, 1>::reduce(FuncSum<T>(), a, b, step);
   }
 };
 
@@ -510,9 +520,9 @@ struct FuncSumPostDiv_IntOnly<T, /*IsFloating=*/true> {
 template<typename T>
 struct Apply_Reduce<FuncSumPostDiv<T>, /*EltPerPack=*/1>:
     Apply_Reduce<FuncSum<T>, 1> {
-  __device__ static BytePack<sizeof(T)> reduce(FuncSumPostDiv<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b) {
+  __device__ static BytePack<sizeof(T)> reduce(FuncSumPostDiv<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
     // FuncSumPostDiv reduce dispatches to FuncSum.
-    return Apply_Reduce<FuncSum<T>, 1>::reduce(FuncSum<T>(), a, b);
+    return Apply_Reduce<FuncSum<T>, 1>::reduce(FuncSum<T>(), a, b, step);
   }
 };
 

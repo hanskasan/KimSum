@@ -132,9 +132,9 @@ struct PrimitivesWithoutDirect {
   __device__ void directRecvCopySend(intptr_t outIx, intptr_t remoteOutIx, int eltN) {
     static_cast<RealPrimitives*>(this)->recvCopySend(outIx, eltN, /*postOp=*/false);
   }
-  __device__ void directRecvReduceCopySend(intptr_t inpIx, intptr_t outIx, intptr_t remoteOutIx, int eltN, bool postOp=false) {
+  __device__ void directRecvReduceCopySend(intptr_t inpIx, intptr_t outIx, intptr_t remoteOutIx, int eltN, int step, bool postOp=false) {
     // Direct is only for the send part
-    static_cast<RealPrimitives*>(this)->recvReduceCopySend(inpIx, outIx, eltN, postOp);
+    static_cast<RealPrimitives*>(this)->recvReduceCopySend(inpIx, outIx, eltN, step, postOp);
   }
 };
 

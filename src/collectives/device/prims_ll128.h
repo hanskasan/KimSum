@@ -229,8 +229,8 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
       { // Consume data from first recv
         #pragma unroll
         for (int u=0; u<ELEMS_PER_THREAD; u+=2) {
-          v[u]   = SRC ? applyReduce(redOp, vr[u], v[u]) : vr[u];
-          v[u+1] = SRC ? applyReduce(redOp, vr[u+1], v[u+1]) : vr[u+1];
+          v[u]   = SRC ? applyReduce(redOp, vr[u], v[u], 301) : vr[u];
+          v[u+1] = SRC ? applyReduce(redOp, vr[u+1], v[u+1], 302) : vr[u+1];
         }
       }
 
@@ -255,8 +255,8 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
 
         #pragma unroll
         for (int u=0; u<ELEMS_PER_THREAD; u+=2) {
-          v[u]   = applyReduce(redOp, vr[u], v[u]);
-          v[u+1] = applyReduce(redOp, vr[u+1], v[u+1]);
+          v[u]   = applyReduce(redOp, vr[u], v[u], 303);
+          v[u+1] = applyReduce(redOp, vr[u+1], v[u+1], 304);
         }
       }
     }
@@ -407,7 +407,7 @@ public:
     userBufs[Output] += delta;
   }
 
-  __device__ void send(intptr_t inpIx, int eltN) {
+  __device__ void send(intptr_t inpIx, int eltN, int step=-1) {
     return GenericOp<0, 1, Input, -1>(inpIx, -1, eltN, false);
   }
   __device__ void sendFromOutput(intptr_t outIx, int eltN) {
@@ -416,7 +416,7 @@ public:
   __device__ void recv(intptr_t outIx, int eltN, bool postOp=false) {
     return GenericOp<1, 0, -1, Output>(-1, outIx, eltN, postOp);
   }
-  __device__ void recvReduceSend(intptr_t inpIx, int eltN) {
+  __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1) {
     return GenericOp<1, 1, Input, -1>(inpIx, -1, eltN, false);
   }
   __device__ void recvReduceCopy(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
@@ -428,7 +428,7 @@ public:
   __device__ void recvCopySend(intptr_t outIx, int eltN, bool postOp=false) {
     return GenericOp<1, 1, -1, Output>(-1, outIx, eltN, postOp);
   }
-  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
+  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool postOp=false) {
     return GenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, postOp);
   }
 };
