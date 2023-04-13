@@ -22,6 +22,11 @@ namespace {
     const ssize_t loopSize = nChannels*nranks*chunkSize;
     const ssize_t size = args->count;
 
+    const int X = 2; // ideally should be args->X | how many steps of reduce-scatter to skip
+    const int Y = 0; // ideally should be args->Y | how many steps of all-gather to skip
+
+    /*  Edge cases X=N-1 and Y=N-1 are ignored, because it is stupid to skip the entire stage */
+
     int minChunkSize;
     if (Proto::Id == NCCL_PROTO_LL)
       minChunkSize = nthreads*(Proto::calcBytePerGrain()/sizeof(T));
@@ -63,34 +68,44 @@ namespace {
       nelem = min(realChunkSize, size-offset);
       prims.send(offset, nelem);
 
+
       // k-2 steps: reduce and copy to next GPU
-      for (int j=2; j<nranks-1; ++j) { //IMPL: nranks-X
+      for (int j=2; j<nranks-X; ++j) { //IMPL: nranks-X
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
-        prims.recvReduceSend(offset, nelem);
+
+        if (j>nranks-X-Y-1){ // MIND THE INDEX HERE
+          prims.recvReduceCopySend(offset, offset, nelem, /*postOp*/ true); 
+        }
+        else{
+          prims.recvReduceSend(offset, nelem);
+        }
       }
 
       // step k-1: reduce this buffer and data, which will produce the final
       // result that we store in this data and push to the next GPU
-      chunk = modRanks(ringIx + 1); ; //IMPL: modRanks(ringIx+X)
+
+      chunk = modRanks(ringIx+X); ; //IMPL: modRanks(ringIx+X)
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
       prims.directRecvReduceCopySend(offset, offset, offset, nelem, /*postOp=*/true);
 
+
       // k-2 steps: copy to next GPU
-      for (int j=1; j<nranks-1; ++j) {
-        chunk = modRanks(ringIx + nranks-j + 1); //IMPL: +X
+      for (int j=1; j<(nranks-1)-Y; ++j) {
+        chunk = modRanks(ringIx + nranks-j + X); //IMPL: +X
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
         prims.directRecvCopySend(offset, offset, nelem);
       }
 
       // Make final copy from buffer to dest.
-      chunk = modRanks(ringIx + 1 + 1); //IMPL: +X
+      chunk = modRanks((ringIx + 1) + X + Y); //IMPL: +X + Y
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
       prims.directRecv(offset, nelem);
+
     }
   }
 

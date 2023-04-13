@@ -1380,6 +1380,7 @@ comp_next:
 static ncclResult_t hostToDevRedOp(
     ncclDevRedOpFull *opFull, ncclRedOp_t op, ncclDataType_t datatype, ncclComm *comm
   ) {
+  
   union {
     int8_t i8;
     uint8_t u8;
