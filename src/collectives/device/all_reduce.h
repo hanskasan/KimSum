@@ -93,7 +93,6 @@ namespace {
       nelem = min(realChunkSize, size-offset);
       prims.directRecvReduceCopySend(offset, offset, offset, nelem, /*postOp=*/true);
 
-
       // k-2 steps: copy to next GPU
       for (int j=1; j<(nranks-1)-Y; ++j) {
         chunk = modRanks(ringIx + nranks-j + X); //IMPL: +X
