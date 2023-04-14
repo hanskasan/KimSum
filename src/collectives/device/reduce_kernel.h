@@ -128,29 +128,17 @@ struct Apply_Reduce<FuncSum<T>, /*EltPerPack=*/1> {
     // return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
     // return toPack<T>(fromPack<T>(a) + fromPack<T>(b) + 1);
 
-    float prob = 0.05;
-
-    unsigned long long seed1 = threadIdx.x + blockDim.x * blockIdx.x;
-    curandState s1;
-    curand_init(seed1, 0, 0, &s1);
-
-    float random1 = curand_uniform(&s1);
+    float epsilon = 0.00012072854042344261;
 
     T a_temp = fromPack<T>(a);
 
     if (step == 1){
-      unsigned long long seed2 = clock64();
-      curandState s2;
-      curand_init(seed2, 0, 0, &s2);
-
-      float random2 = curand_uniform(&s2);
-
-      if (random2 < prob){
+      if (a_temp < epsilon){
         a_temp = 0.0; // Drop previous value
       }
     }
 
-    if (random1 < prob){
+    if (fromPack<T>(b) < epsilon){
       return toPack<T>(a_temp); // Drop my value
     } else {
       return toPack<T>(a_temp + fromPack<T>(b));
