@@ -22,10 +22,11 @@ namespace {
     const ssize_t loopSize = nChannels*nranks*chunkSize;
     const ssize_t size = args->count;
 
-    const int X = 2; // ideally should be args->X | how many steps of reduce-scatter to skip
+    const int X = 0; // ideally should be args->X | how many steps of reduce-scatter to skip
     const int Y = 0; // ideally should be args->Y | how many steps of all-gather to skip
 
-    /*  Edge cases X=N-1 and Y=N-1 are ignored, because it is stupid to skip the entire stage */
+    /*  Edge cases X=N-1 and Y=N-1 are ignored, because it is useless to skip the entire stage */
+    /*  Edge case X=N-2 does not work and hangs for reasons that I do not know and could not figure out */
 
     int minChunkSize;
     if (Proto::Id == NCCL_PROTO_LL)
@@ -37,6 +38,7 @@ namespace {
 
     Primitives<T, RedOp, FanSymmetric<1>, 1, Proto, 0> prims
       (tid, nthreads, &ring->prev, &ring->next, args->sendbuff, args->recvbuff, args->redOpArg);
+
 
     for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
       ssize_t realChunkSize;
@@ -76,13 +78,13 @@ namespace {
         nelem = min(realChunkSize, size-offset);
 
         if (j>nranks-X-Y-1){ // MIND THE INDEX HERE
-          prims.recvReduceCopySend(offset, offset, nelem, /*postOp*/ true); 
+          prims.recvReduceCopySend(offset, offset, nelem, /*postOp*/ true); // CHANGE THE DIVISOR HERE
         }
         else{
           prims.recvReduceSend(offset, nelem);
         }
       }
-
+      
       // step k-1: reduce this buffer and data, which will produce the final
       // result that we store in this data and push to the next GPU
 
