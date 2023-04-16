@@ -22,8 +22,8 @@ namespace {
     const ssize_t loopSize = nChannels*nranks*chunkSize;
     const ssize_t size = args->count;
 
-    const int X = 0; // ideally should be args->X | how many steps of reduce-scatter to skip
-    const int Y = 0; // ideally should be args->Y | how many steps of all-gather to skip
+    const int X = 4; // ideally should be args->X | how many steps of reduce-scatter to skip
+    const int Y = 2; // ideally should be args->Y | how many steps of all-gather to skip
 
     /*  Edge cases X=N-1 and Y=N-1 are ignored, because it is useless to skip the entire stage */
     /*  Edge case X=N-2 does not work and hangs for reasons that I do not know and could not figure out */
