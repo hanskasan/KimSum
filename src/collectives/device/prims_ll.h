@@ -5,7 +5,7 @@
  ************************************************************************/
 
 // HANS: Additionals
-#include <curand_kernel.h>
+// #include <curand_kernel.h>
 
 template<typename T, typename RedOp, typename Fan, int Direct, int P2p>
 class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
@@ -261,12 +261,12 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
         if (SrcBuf == Input) data = applyPreOp(redOp, data);
 
         // HANS: Randomizer
-        float prob = 0.05;
-        unsigned long long seed = threadIdx.x + blockDim.x * blockIdx.x;
-        curandState s;
-        curand_init(seed, 0, step, &s);
-        float random = curand_uniform(&s);
-        if (random < prob)  data = 0;
+        // float prob = 0.05;
+        // unsigned long long seed = threadIdx.x + blockDim.x * blockIdx.x;
+        // curandState s;
+        // curand_init(seed, 0, step, &s);
+        // float random = curand_uniform(&s);
+        // if (random < prob)  data = 0;
       }
       if (RECV) {
         data = !SRC ? peerData : applyReduce(redOp, peerData, data, step);
