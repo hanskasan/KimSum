@@ -75,10 +75,10 @@ __device__ __forceinline__ Pack applyReduce(Fn fn, Pack a, Pack b) {
 }
 
 template<typename Fn, typename Pack>
-__device__ __forceinline__ Pack applyPreOp(Fn fn, Pack a) {
+__device__ __forceinline__ Pack applyPreOp(Fn fn, Pack a, int divisor=-1) {
   return fromPack<Pack>(
     Apply_PreOp<Fn, sizeof(Pack)/sizeof(typename Fn::EltType)>
-      ::preOp(fn, toPack(a))
+      ::preOp(fn, toPack(a), divisor)
   );
 }
 
@@ -258,7 +258,7 @@ template<typename Fn, int EltPerPack>
 struct Apply_PreOp {
   static constexpr bool IsIdentity = Apply_PreOp<Fn, EltPerPack/2>::IsIdentity;
   template<int Size>
-  __device__ static BytePack<Size> preOp(Fn fn, BytePack<Size> a) {
+  __device__ static BytePack<Size> preOp(Fn fn, BytePack<Size> a, int divisor=-1) {
     #if __cpp_if_constexpr
     if constexpr(!IsIdentity) {
     #else
@@ -267,8 +267,8 @@ struct Apply_PreOp {
       // The `if (!IsIdentity)` condition is not strictly necessary, but it may help
       // compiler in that it won't have to tear a register apart for no reason
       // just to put it back together again.
-      a.half[0] = Apply_PreOp<Fn, EltPerPack/2>::preOp(fn, a.half[0]);
-      a.half[1] = Apply_PreOp<Fn, EltPerPack/2>::preOp(fn, a.half[1]);
+      a.half[0] = Apply_PreOp<Fn, EltPerPack/2>::preOp(fn, a.half[0], divisor);
+      a.half[1] = Apply_PreOp<Fn, EltPerPack/2>::preOp(fn, a.half[1], divisor);
     }
     return a;
   }
@@ -278,7 +278,7 @@ template<typename Fn>
 struct Apply_PreOp<Fn, /*EltPerPack=*/1> {
   static constexpr bool IsIdentity = true;
   template<int Size>
-  __device__ static BytePack<Size> preOp(Fn fn, BytePack<Size> a) {
+  __device__ static BytePack<Size> preOp(Fn fn, BytePack<Size> a, int divisor=-1) {
     return a;
   }
 };
@@ -388,8 +388,15 @@ struct Apply_Reduce<FuncPreMulSum<T>, /*EltPerPack=*/1> {
 template<typename T>
 struct Apply_PreOp<FuncPreMulSum<T>, /*EltPerPack=*/1> {
   static constexpr bool IsIdentity = false;
-  __device__ static BytePack<sizeof(T)> preOp(FuncPreMulSum<T> fn, BytePack<sizeof(T)> a) {
-    return toPack<T>(fromPack<T>(a) * fn.scalar);
+  __device__ static BytePack<sizeof(T)> preOp(FuncPreMulSum<T> fn, BytePack<sizeof(T)> a, int divisor=-1) {
+
+    if (divisor==-1){
+      return toPack<T>(fromPack<T>(a) * fn.scalar);
+    }
+    else{
+      return toPack<T>(fromPack<T>(a)*(1.0/divisor));
+    }
+    
   }
 };
 
@@ -399,7 +406,7 @@ struct Apply_PreOp<FuncPreMulSum<T>, /*EltPerPack=*/1> {
 template<>
 struct Apply_PreOp<FuncPreMulSum<half>, /*EltPerPack=*/1> {
   static constexpr bool IsIdentity = false;
-  __device__ static BytePack<sizeof(half)> preOp(FuncPreMulSum<half> fn, BytePack<sizeof(half)> a) {
+  __device__ static BytePack<sizeof(half)> preOp(FuncPreMulSum<half> fn, BytePack<sizeof(half)> a, int divisor=-1) {
     #if __CUDA_ARCH__ >= 530 && __CUDA_ARCH__ != 610
       return toPack<half>(__hmul(fromPack<half>(a), fn.scalar.x));
     #else
@@ -411,7 +418,7 @@ struct Apply_PreOp<FuncPreMulSum<half>, /*EltPerPack=*/1> {
   template<>
   struct Apply_PreOp<FuncPreMulSum<half>, /*EltPerPack=*/2> {
     static constexpr bool IsIdentity = false;
-    __device__ static BytePack<sizeof(half2)> preOp(FuncPreMulSum<half> fn, BytePack<sizeof(half2)> a) {
+    __device__ static BytePack<sizeof(half2)> preOp(FuncPreMulSum<half> fn, BytePack<sizeof(half2)> a, int divisor=-1) {
       return toPack<half2>(__hmul2(fromPack<half2>(a), fn.scalar));
     }
   };
@@ -425,7 +432,7 @@ struct Apply_PreOp<FuncPreMulSum<half>, /*EltPerPack=*/1> {
   struct Apply_PreOp<FuncPreMulSum<__nv_bfloat16>, /*EltPerPack=*/1> {
     static constexpr bool IsIdentity = false;
     __device__ static BytePack<sizeof(__nv_bfloat16)> preOp(
-        FuncPreMulSum<__nv_bfloat16> fn, BytePack<sizeof(__nv_bfloat16)> a
+        FuncPreMulSum<__nv_bfloat16> fn, BytePack<sizeof(__nv_bfloat16)> a, int divisor=-1
       ) {
       #if __CUDA_ARCH__ >= 800
         return toPack<__nv_bfloat16>(__hmul(fromPack<__nv_bfloat16>(a), fn.scalar.x));
@@ -439,7 +446,7 @@ struct Apply_PreOp<FuncPreMulSum<half>, /*EltPerPack=*/1> {
     struct Apply_PreOp<FuncPreMulSum<__nv_bfloat16>, /*EltPerPack=*/2> {
       static constexpr bool IsIdentity = false;
       __device__ static BytePack<sizeof(__nv_bfloat162)> preOp(
-          FuncPreMulSum<__nv_bfloat16> fn, BytePack<sizeof(__nv_bfloat162)> a
+          FuncPreMulSum<__nv_bfloat16> fn, BytePack<sizeof(__nv_bfloat162)> a, int divisor=-1
         ) {
         return toPack<__nv_bfloat162>(__hmul2(fromPack<__nv_bfloat162>(a), fn.scalar));
       }

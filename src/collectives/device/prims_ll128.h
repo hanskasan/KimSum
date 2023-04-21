@@ -428,7 +428,7 @@ public:
   __device__ void recvCopySend(intptr_t outIx, int eltN, bool postOp=false) {
     return GenericOp<1, 1, -1, Output>(-1, outIx, eltN, postOp);
   }
-  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
+  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false, int divisor=-1) {
     return GenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, postOp);
   }
 };
