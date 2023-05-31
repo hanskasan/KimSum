@@ -60,6 +60,9 @@ namespace {
       // HANS: Step Counter
       int step = 0;
 
+      // HANS: Dropping
+      bool is_drop = false;
+
       // step 0: push data to next GPU
       chunk = modRanks(ringIx + nranks-1);
       offset = calcOffset(chunk);
@@ -72,18 +75,19 @@ namespace {
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
-        // printf("recvReduceSend at ringIx: %d, step: %d\n", ringIx, j);
-        prims.recvReduceSend(offset, nelem, step);
+        if (tid == 0) is_drop = true;
+        prims.recvReduceSend(offset, nelem, step, is_drop);
         step += 1;
       }
+
+      is_drop = false;
 
       // step k-1: reduce this buffer and data, which will produce the final
       // result that we store in this data and push to the next GPU
       chunk = ringIx + 0;
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
-      // printf("RecvReduceCopySend at ringIx: %d\n", ringIx);
-      prims.directRecvReduceCopySend(offset, offset, offset, nelem, step, /*postOp=*/true);
+      prims.directRecvReduceCopySend(offset, offset, offset, nelem, step, is_drop, /*postOp=*/true);
       step += 1;
 
       // k-2 steps: copy to next GPU

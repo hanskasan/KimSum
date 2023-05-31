@@ -413,10 +413,10 @@ public:
   __device__ void sendFromOutput(intptr_t outIx, int eltN) {
     return GenericOp<0, 1, Output, -1>(outIx, -1, eltN, false);
   }
-  __device__ void recv(intptr_t outIx, int eltN, bool postOp=false) {
+  __device__ void recv(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
     return GenericOp<1, 0, -1, Output>(-1, outIx, eltN, postOp);
   }
-  __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1) {
+  __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1, bool is_drop=false) {
     return GenericOp<1, 1, Input, -1>(inpIx, -1, eltN, false);
   }
   __device__ void recvReduceCopy(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
@@ -425,10 +425,10 @@ public:
   __device__ void copySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
     return GenericOp<0, 1, Input, Output>(inpIx, outIx, eltN, postOp);
   }
-  __device__ void recvCopySend(intptr_t outIx, int eltN, bool postOp=false) {
+  __device__ void recvCopySend(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
     return GenericOp<1, 1, -1, Output>(-1, outIx, eltN, postOp);
   }
-  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool postOp=false) {
+  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool is_drop, bool postOp=false) {
     return GenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, postOp);
   }
 };

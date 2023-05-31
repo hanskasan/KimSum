@@ -12,9 +12,6 @@
 #include <limits>
 #include <type_traits>
 
-// HANS: Additionals
-#include <curand_kernel.h>
-
 ////////////////////////////////////////////////////////////////////////////////
 // The reduction function classes. All classes must:
 //  1. Expose the `EltType` typedef.
@@ -125,36 +122,7 @@ struct Apply_Reduce<FuncNull<T>, /*EltPerPack=*/1> {
 template<typename T>
 struct Apply_Reduce<FuncSum<T>, /*EltPerPack=*/1> {
   __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
-    // return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
-    // return toPack<T>(fromPack<T>(a) + fromPack<T>(b) + 1);
-
-    float prob = 0.25;
-
-    unsigned long long seed1 = (threadIdx.x + blockDim.x * blockIdx.x) * step;
-    curandState s1;
-    curand_init(seed1, 0, 0, &s1);
-
-    float random1 = curand_uniform(&s1);
-
-    T a_temp = fromPack<T>(a);
-
-    if (step == 1){
-      unsigned long long seed2 = clock64() + step;
-      curandState s2;
-      curand_init(seed2, 0, 0, &s2);
-
-      float random2 = curand_uniform(&s2);
-
-      if (random2 < prob){
-        a_temp = 0.0; // Drop previous value
-      }
-    }
-
-    if (random1 < prob){
-      return toPack<T>(a_temp); // Drop my value
-    } else {
-      return toPack<T>(a_temp + fromPack<T>(b));
-    }
+    return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
   }
 };
 template<typename T>

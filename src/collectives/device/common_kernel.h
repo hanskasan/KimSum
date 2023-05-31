@@ -32,7 +32,7 @@ __device__ __forceinline__ void reduceCopyPacks(
     int nThreads, int &thread,
     uint64_t redArg, uint64_t *preOpArgs, bool postOp,
     int nSrcs, void **srcPtrs, int nDsts, void **dstPtrs,
-    IntBytes &nBytesBehind, IntBytes &nBytesAhead
+    IntBytes &nBytesBehind, IntBytes &nBytesAhead, bool is_drop=false
   ) {
   static_assert(std::is_signed<IntBytes>::value, "IntBytes must be a signed integral type.");
 
@@ -97,7 +97,10 @@ __device__ __forceinline__ void reduceCopyPacks(
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
         if (s < PreOpSrcs) tmp[u] = applyPreOp(preFn, tmp[u]);
-        acc[u] = applyReduce(redFn, acc[u], tmp[u]);
+        if (is_drop)
+          acc[u] = tmp[u];
+        else
+          acc[u] = applyReduce(redFn, acc[u], tmp[u]);
       }
     }
 
@@ -114,7 +117,10 @@ __device__ __forceinline__ void reduceCopyPacks(
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
         if (s < PreOpSrcs) tmp[u] = applyPreOp(preFn, tmp[u]);
-        acc[u] = applyReduce(redFn, acc[u], tmp[u]);
+        if (is_drop)
+          acc[u] = tmp[u];
+        else
+          acc[u] = applyReduce(redFn, acc[u], tmp[u]);
       }
     }
 
@@ -128,7 +134,8 @@ __device__ __forceinline__ void reduceCopyPacks(
     for (int d=0; d < MinDsts; d++) {
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
-        st_global<BytePerPack>(minDsts[d], acc[u]);
+        if (!is_drop)
+          st_global<BytePerPack>(minDsts[d], acc[u]);
         minDsts[d] += WARP_SIZE*BytePerPack;
       }
     }
@@ -136,7 +143,8 @@ __device__ __forceinline__ void reduceCopyPacks(
       uintptr_t dst = cvta_to_global(dstPtrs[d]) + threadBytesBehind;
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
-        st_global<BytePerPack>(dst, acc[u]);
+        if (!is_drop)
+          st_global<BytePerPack>(dst, acc[u]);
         dst += WARP_SIZE*BytePerPack;
       }
     }
@@ -171,7 +179,7 @@ __device__ __forceinline__ void ReduceOrCopyMulti(
     int thread, int nThreads,
     uint64_t redArg, uint64_t *preOpArgs, bool postOp,
     int nSrcs, void **srcPtrs, int nDsts, void **dstPtrs,
-    IntBytes nElts
+    IntBytes nElts, bool is_drop=false
   ) {
   //int nWarps = nThreads/WARP_SIZE;
   //int warp = thread/WARP_SIZE;
@@ -189,26 +197,26 @@ __device__ __forceinline__ void ReduceOrCopyMulti(
     reduceCopyPacks<RedFn, T, Unroll, /*BytePerPack=*/16,
       MinSrcs, MaxSrcs, MinDsts, MaxDsts, PreOpSrcs>
       (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-       nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead);
+       nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead, is_drop);
     if (nBytesAhead == 0) return;
 
     reduceCopyPacks<RedFn, T, /*Unroll=*/1, /*BytePerPack=*/16,
       MinSrcs, MaxSrcs, MinDsts, MaxDsts, PreOpSrcs>
       (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-       nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead);
+       nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead, is_drop);
     if (nBytesAhead == 0) return;
   }
 
   reduceCopyPacks<RedFn, T, Unroll*(16/sizeof(T))/2, /*BytePerPack=*/sizeof(T),
     MinSrcs, MaxSrcs, MinDsts, MaxDsts, PreOpSrcs>
     (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-     nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead);
+     nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead, is_drop);
   if (nBytesAhead == 0) return;
 
   reduceCopyPacks<RedFn, T, /*Unroll=*/1, /*BytePerPack=*/sizeof(T),
     MinSrcs, MaxSrcs, MinDsts, MaxDsts, PreOpSrcs>
     (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-     nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead);
+     nSrcs, srcPtrs, nDsts, dstPtrs, /*&*/nBytesBehind, /*&*/nBytesAhead, is_drop);
 }
 
 // Copies from srcAddr to dstAddr using multimem load/store. The amount copied

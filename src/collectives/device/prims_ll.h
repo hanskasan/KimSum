@@ -385,10 +385,10 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
   __device__ void sendFromOutput(intptr_t outIx, int eltN) {
     return LLGenericOp<0, 1, Output, -1>(outIx, -1, eltN, 402, false);
   }
-  __device__ void recv(intptr_t outIx, int eltN, bool postOp=false) {
+  __device__ void recv(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
     return LLGenericOp<1, 0, -1, Output>(-1, outIx, eltN, 403, postOp);
   }
-  __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1) {
+  __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1, bool is_drop=false) {
     return LLGenericOp<1, 1, Input, -1>(inpIx, -1, eltN, step, false);
   }
   __device__ void recvReduceCopy(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
@@ -397,10 +397,10 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
   __device__ void copySend(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
     return LLGenericOp<0, 1, Input, Output>(inpIx, outIx, eltN, 405, postOp);
   }
-  __device__ void recvCopySend(intptr_t outIx, int eltN, bool postOp=false) {
+  __device__ void recvCopySend(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
     return LLGenericOp<1, 1, -1, Output>(-1, outIx, eltN, 406, postOp);
   }
-  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool postOp=false) {
+  __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool is_drop=false, bool postOp=false) {
     return LLGenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, step, postOp);
   }
 };
