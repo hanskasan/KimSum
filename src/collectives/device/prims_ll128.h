@@ -151,7 +151,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   }
 
   template<int WordPerThread>
-  __device__ __forceinline__ void storeRegs(T *dst, uint64_t(&regs)[WordPerThread], int eltN) {
+  __device__ __forceinline__ void storeRegs(T *dst, uint64_t(&regs)[WordPerThread], int eltN, bool is_drop) {
     constexpr int EltPer16B = 16/sizeof(T);
     // Reverse Finish() register permuatation.
     #pragma unroll
@@ -166,7 +166,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
       int ix = g*WARP_SIZE - 4*(g/2) + wid - (g%2)*(wid/8);
       if (!flagThread || g%2==0) {
         if(misalignment == 0 && (ix+1)*EltPer16B <= eltN)
-          store128((uint64_t*)(dst + ix*EltPer16B), regs[2*g+0], regs[2*g+1]);
+          if (!is_drop) store128((uint64_t*)(dst + ix*EltPer16B), regs[2*g+0], regs[2*g+1]);
         else
           storeShmem128(shm8+2*ix, regs[2*g+0], regs[2*g+1]);
       }
@@ -183,7 +183,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   #define WARP_MASK 0xffffffff
 
   template <int ELEMS_PER_THREAD, int RECV, int SEND, int SrcBuf, int DstBuf>
-  __device__ __forceinline__ void recvReduceSendCopy(uint64_t(&v)[ELEMS_PER_THREAD], int ll128Offset, bool postOp) {
+  __device__ __forceinline__ void recvReduceSendCopy(uint64_t(&v)[ELEMS_PER_THREAD], int ll128Offset, bool postOp, bool is_drop) {
     constexpr int SRC = SrcBuf != -1 ? 1 : 0;
     uint64_t vr[ELEMS_PER_THREAD];
 
@@ -229,8 +229,13 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
       { // Consume data from first recv
         #pragma unroll
         for (int u=0; u<ELEMS_PER_THREAD; u+=2) {
-          v[u]   = SRC ? applyReduce(redOp, vr[u], v[u], 301) : vr[u];
-          v[u+1] = SRC ? applyReduce(redOp, vr[u+1], v[u+1], 302) : vr[u+1];
+          if (is_drop){
+            v[u]   = SRC ? v[u] : vr[u];
+            v[u+1] = SRC ? v[u+1] : vr[u+1];
+          } else {
+            v[u]   = SRC ? applyReduce(redOp, vr[u], v[u], 301) : vr[u];
+            v[u+1] = SRC ? applyReduce(redOp, vr[u+1], v[u+1], 302) : vr[u+1];
+          }
         }
       }
 
@@ -255,8 +260,10 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
 
         #pragma unroll
         for (int u=0; u<ELEMS_PER_THREAD; u+=2) {
-          v[u]   = applyReduce(redOp, vr[u], v[u], 303);
-          v[u+1] = applyReduce(redOp, vr[u+1], v[u+1], 304);
+          if (!is_drop){
+            v[u]   = applyReduce(redOp, vr[u], v[u], 303);
+            v[u+1] = applyReduce(redOp, vr[u+1], v[u+1], 304);
+          }
         }
       }
     }
@@ -294,7 +301,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   static constexpr int DataEltPerSlice = (WireWordPerSlice - WireWordPerSlice/NCCL_LL128_LINEELEMS)*(sizeof(uint64_t)/sizeof(T));
 
   template <int RECV, int SEND, int SrcBuf, int DstBuf>
-  __device__ __forceinline__ void GenericOp(intptr_t srcIx, intptr_t dstIx, int nelem, bool postOp) {
+  __device__ __forceinline__ void GenericOp(intptr_t srcIx, intptr_t dstIx, int nelem, bool postOp, bool is_drop=false) {
     constexpr int SRC = SrcBuf != -1 ? 1 : 0;
     constexpr int DST = DstBuf != -1 ? 1 : 0;
     T const *srcPtr = SrcBuf == -1 ? nullptr : userBufs[SrcBuf] + srcIx;
@@ -312,8 +319,8 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
       const int eltInSlice = min(nelem, DataEltPerSlice);
       uint64_t regs[NCCL_LL128_SHMEM_ELEMS_PER_THREAD];
       if (SRC) loadRegsBegin(regs, srcPtr, eltInSlice);
-      recvReduceSendCopy<NCCL_LL128_SHMEM_ELEMS_PER_THREAD, RECV, SEND, SrcBuf, DstBuf>(regs, wireOffset, postOp);
-      if (DST) storeRegs(dstPtr, regs, eltInSlice);
+      recvReduceSendCopy<NCCL_LL128_SHMEM_ELEMS_PER_THREAD, RECV, SEND, SrcBuf, DstBuf>(regs, wireOffset, postOp, is_drop);
+      if (DST) storeRegs(dstPtr, regs, eltInSlice, is_drop);
 
       wireOffset += WireWordPerSlice*nwarps;
       srcPtr += DataEltPerSlice*nwarps;
@@ -414,10 +421,10 @@ public:
     return GenericOp<0, 1, Output, -1>(outIx, -1, eltN, false);
   }
   __device__ void recv(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
-    return GenericOp<1, 0, -1, Output>(-1, outIx, eltN, postOp);
+    return GenericOp<1, 0, -1, Output>(-1, outIx, eltN, postOp, is_drop);
   }
   __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1, bool is_drop=false) {
-    return GenericOp<1, 1, Input, -1>(inpIx, -1, eltN, false);
+    return GenericOp<1, 1, Input, -1>(inpIx, -1, eltN, false, is_drop);
   }
   __device__ void recvReduceCopy(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
     return GenericOp<1, 0, Input, Output>(inpIx, outIx, eltN, postOp);
@@ -426,9 +433,9 @@ public:
     return GenericOp<0, 1, Input, Output>(inpIx, outIx, eltN, postOp);
   }
   __device__ void recvCopySend(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
-    return GenericOp<1, 1, -1, Output>(-1, outIx, eltN, postOp);
+    return GenericOp<1, 1, -1, Output>(-1, outIx, eltN, postOp, is_drop);
   }
   __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool is_drop, bool postOp=false) {
-    return GenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, postOp);
+    return GenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, postOp, is_drop);
   }
 };

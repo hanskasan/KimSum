@@ -97,10 +97,7 @@ __device__ __forceinline__ void reduceCopyPacks(
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
         if (s < PreOpSrcs) tmp[u] = applyPreOp(preFn, tmp[u]);
-        if (is_drop)
-          acc[u] = tmp[u];
-        else
-          acc[u] = applyReduce(redFn, acc[u], tmp[u]);
+        acc[u] = (is_drop)? acc[u] : applyReduce(redFn, acc[u], tmp[u]);
       }
     }
 
@@ -117,10 +114,7 @@ __device__ __forceinline__ void reduceCopyPacks(
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
         if (s < PreOpSrcs) tmp[u] = applyPreOp(preFn, tmp[u]);
-        if (is_drop)
-          acc[u] = tmp[u];
-        else
-          acc[u] = applyReduce(redFn, acc[u], tmp[u]);
+        acc[u] = (is_drop)? acc[u] : applyReduce(redFn, acc[u], tmp[u]);
       }
     }
 
@@ -134,7 +128,7 @@ __device__ __forceinline__ void reduceCopyPacks(
     for (int d=0; d < MinDsts; d++) {
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
-        if (!is_drop)
+        if ((d == 1) || (!is_drop))
           st_global<BytePerPack>(minDsts[d], acc[u]);
         minDsts[d] += WARP_SIZE*BytePerPack;
       }
@@ -143,7 +137,6 @@ __device__ __forceinline__ void reduceCopyPacks(
       uintptr_t dst = cvta_to_global(dstPtrs[d]) + threadBytesBehind;
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
-        if (!is_drop)
           st_global<BytePerPack>(dst, acc[u]);
         dst += WARP_SIZE*BytePerPack;
       }

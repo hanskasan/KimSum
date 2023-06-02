@@ -8,6 +8,9 @@
 #include "collectives.h"
 #include "primitives.h"
 
+// HANS: Additionals
+#include <curand_kernel.h>
+
 namespace {
   template<typename T, typename RedOp, typename Proto>
   __device__ __forceinline__ void runRing(ncclWorkElem *args) {
@@ -61,7 +64,11 @@ namespace {
       int step = 0;
 
       // HANS: Dropping
-      bool is_drop = false;
+      float prob = 0.25;
+      float random;
+      bool is_drop;
+      curandState s;
+      unsigned long long seed;
 
       // step 0: push data to next GPU
       chunk = modRanks(ringIx + nranks-1);
@@ -75,18 +82,29 @@ namespace {
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
-        if (tid == 0) is_drop = true;
+
+        // HANS: Randomize
+        seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+        curand_init(seed, 0, 0, &s);
+        random = curand_uniform(&s);
+        is_drop = (random < prob) ? true : false;
+
         prims.recvReduceSend(offset, nelem, step, is_drop);
         step += 1;
       }
-
-      is_drop = false;
 
       // step k-1: reduce this buffer and data, which will produce the final
       // result that we store in this data and push to the next GPU
       chunk = ringIx + 0;
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
+
+      // HANS: Randomize
+      seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+      curand_init(seed, 0, 0, &s);
+      random = curand_uniform(&s);
+      is_drop = (random < prob) ? true : false;
+
       prims.directRecvReduceCopySend(offset, offset, offset, nelem, step, is_drop, /*postOp=*/true);
       step += 1;
 
@@ -95,7 +113,14 @@ namespace {
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
-        prims.directRecvCopySend(offset, offset, nelem);
+
+        // HANS: Randomize
+        seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+        curand_init(seed, 0, 0, &s);
+        random = curand_uniform(&s);
+        is_drop =  (random < prob) ? true : false;
+
+        prims.directRecvCopySend(offset, offset, nelem, is_drop);
         step += 1;
       }
 
@@ -103,7 +128,14 @@ namespace {
       chunk = modRanks(ringIx + 1);
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
-      prims.directRecv(offset, nelem);
+
+      // HANS: Randomize
+      seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+      curand_init(seed, 0, 0, &s);
+      random = curand_uniform(&s);
+      is_drop = (random < prob) ? true : false;
+
+      prims.directRecv(offset, nelem, is_drop);
       step += 1;
     }
   }

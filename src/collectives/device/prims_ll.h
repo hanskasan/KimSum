@@ -227,7 +227,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
   }
 
   template <int RECV, int SEND, int SrcBuf, int DstBuf>
-  __device__ __forceinline__ void LLGenericOp(intptr_t srcIx, intptr_t dstIx, int nelem, int step, bool postOp) {
+  __device__ __forceinline__ void LLGenericOp(intptr_t srcIx, intptr_t dstIx, int nelem, int step, bool postOp, bool is_drop=false) {
     constexpr int SRC = SrcBuf != -1 ? 1 : 0;
     constexpr int DST = DstBuf != -1 ? 1 : 0;
     T *srcElts = SrcBuf == -1 ? nullptr : userBufs[SrcBuf] + srcIx;
@@ -269,11 +269,17 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
         // if (random < prob)  data = 0;
       }
       if (RECV) {
-        data = !SRC ? peerData : applyReduce(redOp, peerData, data, step);
+        if (is_drop)
+          data = !SRC ? peerData : data;
+        else
+          data = !SRC ? peerData : applyReduce(redOp, peerData, data, step);
         #pragma unroll MaxRecv
         for (int i=1; i < MaxRecv && i < fan.nrecv(); i++) {
           peerData = readLLFinish(offset, line, i);
-          data = applyReduce(redOp, peerData, data, step);
+          if (is_drop)
+            data = data;
+          else
+            data = applyReduce(redOp, peerData, data, step);
         }
       }
 
@@ -288,7 +294,8 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
         storeLL(sendPtr(0)+offset, temp_data, sendFlag(0));
       }
       if (DST) {
-        storeData(dstElts, data, eltInLine);
+        if (!is_drop)
+          storeData(dstElts, data, eltInLine);
         dstElts += eltPerTrip;
       }
       nelem -= eltPerTrip;
@@ -386,10 +393,10 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
     return LLGenericOp<0, 1, Output, -1>(outIx, -1, eltN, 402, false);
   }
   __device__ void recv(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
-    return LLGenericOp<1, 0, -1, Output>(-1, outIx, eltN, 403, postOp);
+    return LLGenericOp<1, 0, -1, Output>(-1, outIx, eltN, 403, postOp, is_drop);
   }
   __device__ void recvReduceSend(intptr_t inpIx, int eltN, int step=-1, bool is_drop=false) {
-    return LLGenericOp<1, 1, Input, -1>(inpIx, -1, eltN, step, false);
+    return LLGenericOp<1, 1, Input, -1>(inpIx, -1, eltN, step, false, is_drop);
   }
   __device__ void recvReduceCopy(intptr_t inpIx, intptr_t outIx, int eltN, bool postOp=false) {
     return LLGenericOp<1, 0, Input, Output>(inpIx, outIx, eltN, 404, postOp);
@@ -398,9 +405,9 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
     return LLGenericOp<0, 1, Input, Output>(inpIx, outIx, eltN, 405, postOp);
   }
   __device__ void recvCopySend(intptr_t outIx, int eltN, bool is_drop=false, bool postOp=false) {
-    return LLGenericOp<1, 1, -1, Output>(-1, outIx, eltN, 406, postOp);
+    return LLGenericOp<1, 1, -1, Output>(-1, outIx, eltN, 406, postOp, is_drop);
   }
   __device__ void recvReduceCopySend(intptr_t inpIx, intptr_t outIx, int eltN, int step, bool is_drop=false, bool postOp=false) {
-    return LLGenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, step, postOp);
+    return LLGenericOp<1, 1, Input, Output>(inpIx, outIx, eltN, step, postOp, is_drop);
   }
 };
