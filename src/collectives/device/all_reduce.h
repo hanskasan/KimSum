@@ -64,7 +64,7 @@ namespace {
       int step = 0;
 
       // HANS: Dropping
-      float prob = 0.25;
+      float prob = 0.25 * ((float)nranks / (float)(nranks - 1)); // To compensate for gradients that are not dropped at step 0
       float random;
       bool is_drop;
       curandState s;
@@ -113,13 +113,7 @@ namespace {
         chunk = modRanks(ringIx + nranks-j);
         offset = calcOffset(chunk);
         nelem = min(realChunkSize, size-offset);
-
-        // HANS: Randomize
-        seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
-        curand_init(seed, 0, 0, &s);
-        random = curand_uniform(&s);
-        is_drop =  (random < prob) ? true : false;
-
+        is_drop = false;
         prims.directRecvCopySend(offset, offset, nelem, is_drop);
         step += 1;
       }
@@ -128,13 +122,7 @@ namespace {
       chunk = modRanks(ringIx + 1);
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
-
-      // HANS: Randomize
-      seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
-      curand_init(seed, 0, 0, &s);
-      random = curand_uniform(&s);
-      is_drop = (random < prob) ? true : false;
-
+      is_drop = false;
       prims.directRecv(offset, nelem, is_drop);
       step += 1;
     }
