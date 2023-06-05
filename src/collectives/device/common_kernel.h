@@ -97,7 +97,7 @@ __device__ __forceinline__ void reduceCopyPacks(
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
         if (s < PreOpSrcs) tmp[u] = applyPreOp(preFn, tmp[u]);
-        acc[u] = (is_drop)? acc[u] : applyReduce(redFn, acc[u], tmp[u]);
+        acc[u] = (is_drop)? tmp[u] : applyReduce(redFn, acc[u], tmp[u]);
       }
     }
 
@@ -114,7 +114,7 @@ __device__ __forceinline__ void reduceCopyPacks(
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
         if (s < PreOpSrcs) tmp[u] = applyPreOp(preFn, tmp[u]);
-        acc[u] = (is_drop)? acc[u] : applyReduce(redFn, acc[u], tmp[u]);
+        acc[u] = (is_drop)? tmp[u] : applyReduce(redFn, acc[u], tmp[u]);
       }
     }
 
