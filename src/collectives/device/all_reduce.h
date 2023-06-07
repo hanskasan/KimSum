@@ -108,6 +108,9 @@ namespace {
       prims.directRecvReduceCopySend(offset, offset, offset, nelem, step, is_drop, /*postOp=*/true);
       step += 1;
 
+      // HANS: Reset everyone to not drop
+      is_drop = false;
+
       // k-2 steps: copy to next GPU
       for (int j=1; j<nranks-1; ++j) {
         chunk = modRanks(ringIx + nranks-j);
@@ -118,7 +121,7 @@ namespace {
         seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
         curand_init(seed, 0, 0, &s);
         random = curand_uniform(&s);
-        is_drop =  (random < prob) ? true : false;
+        is_drop =  (random < prob) ? true : is_drop; 
 
         prims.directRecvCopySend(offset, offset, nelem, is_drop);
         step += 1;
@@ -133,7 +136,7 @@ namespace {
       seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
       curand_init(seed, 0, 0, &s);
       random = curand_uniform(&s);
-      is_drop = (random < prob) ? true : false;
+      is_drop = (random < prob) ? true : is_drop;
 
       prims.directRecv(offset, nelem, is_drop);
       step += 1;
