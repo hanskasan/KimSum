@@ -125,18 +125,19 @@ struct Apply_Reduce<FuncNull<T>, /*EltPerPack=*/1> {
 template<typename T>
 struct Apply_Reduce<FuncSum<T>, /*EltPerPack=*/1> {
   __device__ static BytePack<sizeof(T)> reduce(FuncSum<T> fn, BytePack<sizeof(T)> a, BytePack<sizeof(T)> b, int step) {
-    float thres = 0.001446095; // 90% percentile
-    float prob = 0.25 * ((float)nranks / (float)(nranks - 1));
+    float thres = 0.001446095; // 90th percentile
+    float prob = 0.25 * ((float)4 / (float)(4 - 1));
     T b_temp = fromPack<T>(b);
 
     // Randomize
-    seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+    curandState s;
+    unsigned long long seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
     curand_init(seed, 0, 0, &s);
-    random = curand_uniform(&s);
-    bool is_drop = ((b_temp > thres) && (random < prob)) true : false;
+    float random = curand_uniform(&s);
+    bool is_drop = ((b_temp > thres) && (random < prob)) ? true : false;
 
     if (is_drop){
-      return a
+      return a;
     } else {
       return toPack<T>(fromPack<T>(a) + fromPack<T>(b));
     }
