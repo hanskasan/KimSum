@@ -128,7 +128,7 @@ __device__ __forceinline__ void reduceCopyPacks(
     for (int d=0; d < MinDsts; d++) {
       #pragma unroll Unroll
       for (int u=0; u < Unroll; u++) {
-        if ((d == 1) || (!is_drop))
+        // if ((d == 1) || (!is_drop))
           st_global<BytePerPack>(minDsts[d], acc[u]);
         minDsts[d] += WARP_SIZE*BytePerPack;
       }

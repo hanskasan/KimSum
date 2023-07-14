@@ -270,14 +270,14 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
       }
       if (RECV) {
         if (is_drop)
-          data = !SRC ? peerData : data;
+          data = peerData;
         else
           data = !SRC ? peerData : applyReduce(redOp, peerData, data, step);
         #pragma unroll MaxRecv
         for (int i=1; i < MaxRecv && i < fan.nrecv(); i++) {
           peerData = readLLFinish(offset, line, i);
           if (is_drop)
-            data = data;
+            data = peerData;
           else
             data = applyReduce(redOp, peerData, data, step);
         }
@@ -294,7 +294,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
         storeLL(sendPtr(0)+offset, temp_data, sendFlag(0));
       }
       if (DST) {
-        if (!is_drop)
+        // if (!is_drop)
           storeData(dstElts, data, eltInLine);
         dstElts += eltPerTrip;
       }

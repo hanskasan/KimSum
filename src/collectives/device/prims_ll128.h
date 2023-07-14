@@ -166,7 +166,8 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
       int ix = g*WARP_SIZE - 4*(g/2) + wid - (g%2)*(wid/8);
       if (!flagThread || g%2==0) {
         if(misalignment == 0 && (ix+1)*EltPer16B <= eltN)
-          if (!is_drop) store128((uint64_t*)(dst + ix*EltPer16B), regs[2*g+0], regs[2*g+1]);
+          // if (!is_drop) 
+            store128((uint64_t*)(dst + ix*EltPer16B), regs[2*g+0], regs[2*g+1]);
         else
           storeShmem128(shm8+2*ix, regs[2*g+0], regs[2*g+1]);
       }
@@ -230,8 +231,8 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
         #pragma unroll
         for (int u=0; u<ELEMS_PER_THREAD; u+=2) {
           if (is_drop){
-            v[u]   = SRC ? v[u] : vr[u];
-            v[u+1] = SRC ? v[u+1] : vr[u+1];
+            v[u]   = vr[u];
+            v[u+1] = vr[u+1];
           } else {
             v[u]   = SRC ? applyReduce(redOp, vr[u], v[u], 301) : vr[u];
             v[u+1] = SRC ? applyReduce(redOp, vr[u+1], v[u+1], 302) : vr[u+1];

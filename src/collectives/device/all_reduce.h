@@ -64,7 +64,7 @@ namespace {
       int step = 0;
 
       // HANS: Dropping
-      float prob = 0.25 * ((float)nranks / (float)(nranks - 1)); // To compensate for gradients that are not dropped at step 0
+      float prob = 0.25;
       float random;
       bool is_drop;
       curandState s;
