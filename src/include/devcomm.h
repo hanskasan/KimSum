@@ -293,6 +293,13 @@ struct ncclDevComm {
 
   // Channels, device side
   struct ncclDevChannel* channels/*[MAXCHANNELS]*/;
+
+  // HANS: Additionals
+  int drop_prob;
+  int drop_pos;
+  // int is_dropag;
+  int drop_consecutive;
+  uint64_t iterations[MAXCHANNELS];
 };
 
 struct alignas(16) ncclDevCommAndChannels {

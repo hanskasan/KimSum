@@ -25,6 +25,13 @@ namespace {
     const ssize_t loopSize = nChannels*nranks*chunkSize;
     const ssize_t size = args->count;
 
+    // HANS: Additionals
+    const int prob_numerator = ncclShmem.comm.drop_prob;
+    const int drop_pos = ncclShmem.comm.drop_pos;
+    const int is_dropag = ((drop_pos >= 0) && (drop_pos < nranks)) ? false : true;
+    const int drop_consecutive = ncclShmem.comm.drop_consecutive;
+    const unsigned long long iteration = ncclShmem.comm.iterations[bid];
+
     int minChunkSize;
     if (Proto::Id == NCCL_PROTO_LL)
       minChunkSize = nthreads*(Proto::calcBytePerGrain()/sizeof(T));
@@ -64,7 +71,7 @@ namespace {
       int step = 0;
 
       // HANS: Dropping
-      float prob = 0.25;
+      float prob = (float)prob_numerator / (float)nranks;
       float random;
       bool is_drop;
       curandState s;
@@ -74,7 +81,7 @@ namespace {
       chunk = modRanks(ringIx + nranks-1);
       offset = calcOffset(chunk);
       nelem = min(realChunkSize, size-offset);
-      prims.send(offset, nelem, step);
+      prims.send(offset, nelem, 1);
       step += 1;
 
       // k-2 steps: reduce and copy to next GPU
@@ -84,10 +91,10 @@ namespace {
         nelem = min(realChunkSize, size-offset);
 
         // HANS: Randomize
-        seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+        seed = ringIx + (threadIdx.x + blockDim.x * blockIdx.x) + ((iteration * (2 * (nranks - 1)) + step) / drop_consecutive);
         curand_init(seed, 0, 0, &s);
         random = curand_uniform(&s);
-        is_drop = (random < prob) ? true : false;
+        is_drop = ((((j - 1) == drop_pos) || (drop_pos == -1)) && (random < prob)) ? true : false;
 
         prims.recvReduceSend(offset, nelem, step, is_drop);
         step += 1;
@@ -100,16 +107,13 @@ namespace {
       nelem = min(realChunkSize, size-offset);
 
       // HANS: Randomize
-      seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+      seed = ringIx + (threadIdx.x + blockDim.x * blockIdx.x) + ((iteration * (2 * (nranks - 1)) + step) / drop_consecutive);
       curand_init(seed, 0, 0, &s);
       random = curand_uniform(&s);
-      is_drop = (random < prob) ? true : false;
+      is_drop = ((((nranks - 1) == drop_pos) || (drop_pos == -1)) && (random < prob)) ? true : false;
 
       prims.directRecvReduceCopySend(offset, offset, offset, nelem, step, is_drop, /*postOp=*/true);
       step += 1;
-
-      // HANS: Reset everyone to not drop
-      is_drop = false;
 
       // k-2 steps: copy to next GPU
       for (int j=1; j<nranks-1; ++j) {
@@ -118,10 +122,10 @@ namespace {
         nelem = min(realChunkSize, size-offset);
 
         // HANS: Randomize
-        seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+        seed = ringIx + (threadIdx.x + blockDim.x * blockIdx.x) + ((iteration * (2 * (nranks - 1)) + step) / drop_consecutive);
         curand_init(seed, 0, 0, &s);
         random = curand_uniform(&s);
-        is_drop =  (random < prob) ? true : is_drop; 
+        is_drop = ((is_dropag > 0) && (((nranks + (j - 1)) >= drop_pos) || (drop_pos == -1)) && (random < prob)) ? true : false;
 
         prims.directRecvCopySend(offset, offset, nelem, is_drop);
         step += 1;
@@ -133,10 +137,10 @@ namespace {
       nelem = min(realChunkSize, size-offset);
 
       // HANS: Randomize
-      seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+      seed = ringIx + (threadIdx.x + blockDim.x * blockIdx.x) + ((iteration * (2 * (nranks - 1)) + step) / drop_consecutive);
       curand_init(seed, 0, 0, &s);
       random = curand_uniform(&s);
-      is_drop = (random < prob) ? true : is_drop;
+      is_drop = ((is_dropag > 0) && (((nranks + nranks - 2) >= drop_pos) || (drop_pos == -1)) && (random < prob)) ? true : false;
 
       prims.directRecv(offset, nelem, is_drop);
       step += 1;

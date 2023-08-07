@@ -135,6 +135,11 @@ __device__ void ncclKernel(
       }
     }
   }
+
+  // HANS: Increment counter
+  if (tid == 0)
+    comm->iterations[blockIdx.x] += 1;
+
   __syncthreads(); // publish ncclShmem.channelId
   int channelId = ncclShmem.channelId;
   /* set abort flag to 0 */

@@ -341,6 +341,11 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank) {
   return ncclSuccess;
 }
 
+NCCL_PARAM(ProbNumerator, "PROB", 0);
+NCCL_PARAM(DropPos, "DROP_POS", -1);
+// NCCL_PARAM(IsDropAG, "IS_DROPAG", 0);
+NCCL_PARAM(Consecutive, "CONSECUTIVE", 1);
+
 static ncclResult_t devCommSetup(ncclComm_t comm) {
   ncclResult_t ret = ncclSuccess;
   int nRanks = comm->nRanks;
@@ -358,6 +363,14 @@ static ncclResult_t devCommSetup(ncclComm_t comm) {
     tmpCommAndChans.comm.buffSizes[p] = comm->buffSizes[p];
   }
   tmpCommAndChans.comm.channels = &devCommAndChans->channels[0];
+
+  // HANS: Additional
+  tmpCommAndChans.comm.drop_prob        = ncclParamProbNumerator();
+  tmpCommAndChans.comm.drop_pos         = ncclParamDropPos();
+  // tmpCommAndChans.comm.is_dropag        = ncclParamIsDropAG();
+  tmpCommAndChans.comm.drop_consecutive = ncclParamConsecutive();
+  for (int iter = 0; iter < MAXCHANNELS; iter++)
+    tmpCommAndChans.comm.iterations[iter] = 0;
 
   comm->workFifoDepth = ncclParamWorkFifoDepth();
   if (0 != (comm->workFifoDepth & (comm->workFifoDepth-1))) {
