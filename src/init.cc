@@ -341,6 +341,13 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank) {
   return ncclSuccess;
 }
 
+NCCL_PARAM(ProbNum, "PROB_NUM", 0);
+NCCL_PARAM(ProtectSize0, "PROTECT_SIZE_0", 0);
+NCCL_PARAM(ProtectSize1, "PROTECT_SIZE_1", 0);
+NCCL_PARAM(ProtectSize2, "PROTECT_SIZE_2", 0);
+NCCL_PARAM(ProtectSize3, "PROTECT_SIZE_3", 0);
+NCCL_PARAM(ProtectSize4, "PROTECT_SIZE_4", 0);
+
 static ncclResult_t devCommSetup(ncclComm_t comm) {
   ncclResult_t ret = ncclSuccess;
   int nRanks = comm->nRanks;
@@ -358,6 +365,16 @@ static ncclResult_t devCommSetup(ncclComm_t comm) {
     tmpCommAndChans.comm.buffSizes[p] = comm->buffSizes[p];
   }
   tmpCommAndChans.comm.channels = &devCommAndChans->channels[0];
+
+  // HANS: Additionals
+  tmpCommAndChans.comm.prob_num = ncclParamProbNum();
+  tmpCommAndChans.comm.protect_size_0 = ncclParamProtectSize0();
+  tmpCommAndChans.comm.protect_size_1 = ncclParamProtectSize1();
+  tmpCommAndChans.comm.protect_size_2 = ncclParamProtectSize2();
+  tmpCommAndChans.comm.protect_size_3 = ncclParamProtectSize3();
+  tmpCommAndChans.comm.protect_size_4 = ncclParamProtectSize4();
+
+  printf("Random pruning with numerator %d but protect buckets with size  %d %d %d %d %d\n", tmpCommAndChans.comm.prob_num, tmpCommAndChans.comm.protect_size_0, tmpCommAndChans.comm.protect_size_1, tmpCommAndChans.comm.protect_size_2, tmpCommAndChans.comm.protect_size_3, tmpCommAndChans.comm.protect_size_4);
 
   comm->workFifoDepth = ncclParamWorkFifoDepth();
   if (0 != (comm->workFifoDepth & (comm->workFifoDepth-1))) {

@@ -293,6 +293,14 @@ struct ncclDevComm {
 
   // Channels, device side
   struct ncclDevChannel* channels/*[MAXCHANNELS]*/;
+
+  // HANS: Additionals
+  uint32_t protect_size_0;
+  uint32_t protect_size_1;
+  uint32_t protect_size_2;
+  uint32_t protect_size_3;
+  uint32_t protect_size_4;
+  uint8_t prob_num;
 };
 
 struct alignas(16) ncclDevCommAndChannels {

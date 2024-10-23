@@ -25,6 +25,24 @@ namespace {
     const ssize_t loopSize = nChannels*nranks*chunkSize;
     const ssize_t size = args->count;
 
+    // HANS: Simple hack not to drop control signal
+    const ssize_t min_size = 100000;
+    
+    // HANS: Additionals
+    const uint8_t prob_num = ncclShmem.comm.prob_num;
+
+    const uint32_t protect_size_0 = ncclShmem.comm.protect_size_0;
+    const uint32_t protect_size_1 = ncclShmem.comm.protect_size_1;
+    const uint32_t protect_size_2 = ncclShmem.comm.protect_size_2;
+    const uint32_t protect_size_3 = ncclShmem.comm.protect_size_3;
+    const uint32_t protect_size_4 = ncclShmem.comm.protect_size_4;
+
+    float random;
+    bool is_drop;
+    curandState s;
+    unsigned long long seed;
+    float prob;
+
     int minChunkSize;
     if (Proto::Id == NCCL_PROTO_LL)
       minChunkSize = nthreads*(Proto::calcBytePerGrain()/sizeof(T));
@@ -64,11 +82,17 @@ namespace {
       int step = 0;
 
       // HANS: Dropping
-      float prob = 0.25;
-      float random;
-      bool is_drop;
-      curandState s;
-      unsigned long long seed;
+      if (size < min_size) {
+        prob = 0.0;
+      } else {
+
+        // Only skip certain layers
+        if ((size == protect_size_0) or (size == protect_size_1) or (size == protect_size_2) or (size == protect_size_3) or (size == protect_size_4)){
+          prob = 0.0;
+        } else {
+          prob = (float)prob_num / (float)nranks;
+        }
+      }
 
       // step 0: push data to next GPU
       chunk = modRanks(ringIx + nranks-1);
@@ -84,7 +108,7 @@ namespace {
         nelem = min(realChunkSize, size-offset);
 
         // HANS: Randomize
-        seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+        seed = clock64() + ringIx + (threadIdx.x + blockDim.x * blockIdx.x) + step;
         curand_init(seed, 0, 0, &s);
         random = curand_uniform(&s);
         is_drop = (random < prob) ? true : false;
@@ -100,7 +124,7 @@ namespace {
       nelem = min(realChunkSize, size-offset);
 
       // HANS: Randomize
-      seed = clock64() + (threadIdx.x + blockDim.x * blockIdx.x) + step;
+      seed = clock64() + ringIx + (threadIdx.x + blockDim.x * blockIdx.x) + step;
       curand_init(seed, 0, 0, &s);
       random = curand_uniform(&s);
       is_drop = (random < prob) ? true : false;
